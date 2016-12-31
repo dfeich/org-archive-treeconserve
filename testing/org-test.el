@@ -97,6 +97,24 @@ org-test searches this directory up the directory tree.")
   (expand-file-name ".test-org-id-locations" org-test-dir))
 
 
+
+;;; helper functions
+(defun org-test-kill-buffers-under-dir (dir)
+  "Kill all buffers that have filenames with path prefix DIR."
+  (when (not (string-suffix-p "/" dir))
+    (setq dir (concat dir "/")))
+  (mapc (lambda (buffer)
+	  (let ((file-name (buffer-file-name buffer)))
+	    (when (and file-name
+		       (string-prefix-p dir file-name))
+	      (with-current-buffer buffer
+		(basic-save-buffer))
+	      (message "killing buffer: %s" buffer)
+	      (kill-buffer buffer)
+	      )))
+	(buffer-list)))
+
+
 ;;; Functions for writing tests
 (put 'missing-test-dependency
      'error-conditions
@@ -222,23 +240,21 @@ otherwise place the point at the beginning of the inserted text."
   "Run body in a temporary directory and file buffer with Org mode as the active mode."
   (declare (indent 1))
   (let ((results (gensym)))
-    `(let* ((dir (make-temp-file "org-test-dir" t))
-	    (file (concat dir "/org-test.org"))
+    `(let* ((tmpdir (make-temp-file "org-test-dir" t))
+	    (file (concat tmpdir "/org-test.org"))
 	    (kill-buffer-query-functions nil)
 	    (inside-text (if (stringp ,text) ,text (eval ,text)))
 	    ,results)
        (with-temp-file file (insert inside-text))
-       (find-file file)
-       (org-mode)
        (save-mark-and-excursion
+	(find-file file)
+	(org-mode)
 	(setq ,results (progn ,@body)))
-       (save-buffer)
-       (kill-buffer (current-buffer))
-       (delete-directory dir t)
+       ;; cleanup
+       (org-test-kill-buffers-under-dir tmpdir)
+       (delete-directory tmpdir t)
        ,results)))
 (def-edebug-spec org-test-with-temp-text-in-dir (form body))
-
-
 
 (defun org-test-table-target-expect (target &optional expect laps
 					    &rest tblfm)

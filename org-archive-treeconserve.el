@@ -37,42 +37,49 @@ OLP string at \"/\". Do not split at escaped slashes."
    "\n")
   )
 
-(defun org-arctc-ensure-heading-exists (olp &optional create)
-  "Ensure that outline path OLP exists. OLP is given as a
-list. If CREATE is non-nil, the heading will be created. All
-intermediate levels will be created as well. New first level
-headings are inserted at the end of the buffer.  Returns a marker
-to the beginning of the heading or nil if the path does not
-exist and CREATE is nil."
+(defun org-arctc-assert-heading-exists (olp &optional create)
+  "Ensure that outline path OLP exists.
+
+OLP is given as a list of heading strings. If CREATE is non-nil,
+the heading will be created. All intermediate levels will be
+created as well. New first level headings are inserted at the end
+of the buffer. Returns a marker to the beginning of the heading
+or nil if the path does not exist and CREATE is nil."
   (let (tmpolp marker)
     (cl-assert (eq major-mode 'org-mode) nil "Not in Org mode")
-    (cl-dolist (elm olp marker)
-      (setq tmpolp (concatenate 'list tmpolp `(,elm)))
-      (unless (condition-case err
-		  (setq marker (org-find-olp tmpolp t))
-		;; return nil for heading not found, raise the error
-		;; again for any other error
-		(error (let ((errmsg (error-message-string err)))
-			 (if (string-match "^Heading not found.*" errmsg)
-			     nil
-			   (error errmsg)))))
-	(unless create (cl-return))
-	(if marker (progn (goto-char marker)
-			  (org-insert-heading-after-current)
-			  (org-demote-subtree))
-	  (end-of-buffer)
-	  (org-insert-heading nil nil t)
-	  )
-	(insert elm)
-	(beginning-of-line)
-	(setq marker (point-marker)))))
+    (save-excursion
+      (cl-dolist (elm olp marker)
+	(setq tmpolp (concatenate 'list tmpolp `(,elm)))
+	(unless (condition-case err
+		    (setq marker (org-find-olp tmpolp t))
+		  ;; return nil for heading not found, raise the error
+		  ;; again for any other error
+		  (error (let ((errmsg (error-message-string err)))
+			   (if (string-match "^Heading not found.*" errmsg)
+			       nil
+			     (error errmsg)))))
+	  (unless create (cl-return))
+	  (if marker (progn (goto-char marker)
+			    (org-insert-heading-after-current)
+			    (org-demote-subtree))
+	    (end-of-buffer)
+	    (org-insert-heading nil nil t)
+	    )
+	  (insert elm)
+	  (beginning-of-line)	  
+	  (setq marker (point-marker))
+	  (end-of-line)
+	  (insert "\n")))))
   )
 
 ;; the ARCHIVE_OLPATH is problematic, since it separates path elements
 ;; by "/", but a heading string may also contain a "/".
-(defun org-arctc-refile-archive-to-olpath (pom)
+(defun org-arctc-refile-archive-to-olpath (pom &optional create-parent)
   "refile the entry at POM to the outline path stored in the ARCHIVE_OLPATH
-property. Can deal with escaped slash in the olpath string."
+property.
+
+Can deal with escaped slash in the olpath string. If create-parent is
+non-nil it will create the parent headline in case it does not exist."
   (goto-char pom)
   (let ((olpath (org-entry-get pom "ARCHIVE_OLPATH"))
 	(heading (nth 4 (org-heading-components))))
@@ -80,10 +87,14 @@ property. Can deal with escaped slash in the olpath string."
     (let* ((arc-parentolp (org-arctc-split-escaped-olpath olpath))
 	   (cur-parentolp (org-get-outline-path))
 	   (arc-olp (concatenate 'list arc-parentolp `(,heading))))
+      (when create-parent (org-arctc-assert-heading-exists arc-parentolp t))
       (cond
+       ((not (org-arctc-assert-heading-exists arc-parentolp))
+	(error "target item's parent entry does not exist: %s" arc-parentolp)
+	)
        ((equal cur-parentolp arc-parentolp)
 	(message "item already at olpath"))
-       ((save-excursion (org-arctc-ensure-heading-exists arc-olp))
+       ((org-arctc-assert-heading-exists arc-olp)
 	(error "target item already exists: aborting"))
        (t (progn (message "moving item from %s to %s"
 			  (pp-to-string cur-parentolp)
@@ -95,29 +106,30 @@ property. Can deal with escaped slash in the olpath string."
 		 ;; 	       `(nil ,(buffer-file-name) nil 
 		 ;; 		     ,(marker-position 
 		 ;; 		       (save-excursion
-		 ;; 			 (org-arctc-ensure-heading-exists
+		 ;; 			 (org-arctc-assert-heading-exists
 		 ;; 			  arc-parentolp t)))) )
 		 (goto-char pom)
 		 (org-cut-subtree)
-		 (goto-char (org-arctc-ensure-heading-exists arc-parentolp t))
+		 (goto-char (org-arctc-assert-heading-exists arc-parentolp))
 		 (goto-char (org-entry-end-position))
 		 (org-paste-subtree (length arc-olp))
-		 (org-arctc-ensure-heading-exists arc-olp)))))
+		 (org-arctc-assert-heading-exists arc-olp)))))
     ))
 
-;; from http://orgmode.org/worg/org-hacks.html#sec-1-6-1
+;; modified from http://orgmode.org/worg/org-hacks.html#sec-1-6-1
 ;; archive subtrees conserving the top level heading and
 ;; conserving the tags
 (defun org-arctc-inherited-no-file-tags ()
-  (let ((tags (org-entry-get nil "ALLTAGS" 'selective))
-        (ltags (org-entry-get nil "TAGS")))
+  "Returns just the tags that are inherited."
+  (let ((alltags (org-entry-get nil "ALLTAGS" 'selective))
+        (localtags (org-entry-get nil "TAGS")))
     (mapc (lambda (tag)
-            (setq tags
-                  (replace-regexp-in-string (concat tag ":") "" tags)))
-          (append org-file-tags (when ltags (split-string ltags ":" t))))
-    (if (string= ":" tags) nil tags)))
-;; this lisp advice wraps the original function. The keyword activate
-;; immediately activates it.
+            (setq alltags
+                  (replace-regexp-in-string (concat tag ":") "" alltags)))
+          (append org-file-tags (when localtags (split-string localtags ":" t))))
+    (if (string= ":" alltags) nil alltags)))
+
+;; modified from http://orgmode.org/worg/org-hacks.html#sec-1-6-1
 ;; I added escaping of slashes in the olpath
 ;; added check preventing archiving of a subtree where the full olpath
 ;; already exists
@@ -130,12 +142,12 @@ property. Can deal with escaped slash in the olpath string."
 		     "::* "
 		     (car (org-get-outline-path)))
 	   org-archive-location))
-	(my-olpath (org-get-outline-path))
+	(src-olpath (org-get-outline-path))
 	(heading (nth 4 (org-heading-components))))
     (with-current-buffer (find-file-noselect (org-extract-archive-file))
       (org-mode)
-      (when (org-arctc-ensure-heading-exists
-	     (append my-olpath (list heading)) )
+      (when (org-arctc-assert-heading-exists
+	     (append src-olpath (list heading)) )
 	(error "Heading already exists in archive")))
     (apply orig-fun args)
     ;; the following code builds on the point being on the inserted
@@ -147,8 +159,8 @@ property. Can deal with escaped slash in the olpath string."
 			(lambda (s)
 			  (setq s (replace-regexp-in-string "/" "\\\\/" s))
 			  s)
-			my-olpath "/"))
-	(org-arctc-refile-archive-to-olpath pom))
+			src-olpath "/"))
+	(org-arctc-refile-archive-to-olpath pom t))
       (let ((pom (point-marker)))
 	;; this saves inherited headings
 	(save-excursion
@@ -184,7 +196,7 @@ extreme amount of clock lines."
       ;; while usually exits with nil. We exit with t if the clock line
       ;; we read is older than the given date.
       (find-file-other-window (org-extract-archive-file))
-      (unless (org-arctc-ensure-heading-exists olp)
+      (unless (org-arctc-assert-heading-exists olp)
 	(error "The target heading does not exist (%s)" olp)))
     (if
 	(block nil (while (re-search-forward clockrange-rgx entryend t)
