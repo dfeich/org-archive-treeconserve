@@ -31,6 +31,9 @@
 
 ;;;; Code:
 
+;; Derek: needed for interactive testing
+(require 'which-func)
+
 ;;; Ob constants
 
 (defconst org-test-file-ob-anchor
@@ -214,8 +217,31 @@ otherwise place the point at the beginning of the inserted text."
        ,results)))
 (def-edebug-spec org-test-with-temp-text-in-file (form body))
 
+
+(defmacro org-test-with-temp-text-in-dir (text &rest body)
+  "Run body in a temporary directory and file buffer with Org mode as the active mode."
+  (declare (indent 1))
+  (let ((results (gensym)))
+    `(let* ((dir (make-temp-file "org-test-dir" t))
+	    (file (concat dir "/org-test.org"))
+	    (kill-buffer-query-functions nil)
+	    (inside-text (if (stringp ,text) ,text (eval ,text)))
+	    ,results)
+       (with-temp-file file (insert inside-text))
+       (find-file file)
+       (org-mode)
+       (save-mark-and-excursion
+	(setq ,results (progn ,@body)))
+       (save-buffer)
+       (kill-buffer (current-buffer))
+       (delete-directory dir t)
+       ,results)))
+(def-edebug-spec org-test-with-temp-text-in-dir (form body))
+
+
+
 (defun org-test-table-target-expect (target &optional expect laps
-&rest tblfm)
+					    &rest tblfm)
   "For all TBLFM: Apply the formula to TARGET, compare EXPECT with result.
 Either LAPS and TBLFM are nil and the table will only be aligned
 or LAPS is the count of recalculations that should be made on

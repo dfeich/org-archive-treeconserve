@@ -20,6 +20,11 @@
 ;; The basic idea is archiving an entry as usual and moving it
 ;; afterwards to the full olp that is saved during archiving
 ;; to the ARCHIVE_OLPATH property.
+;;
+;; Note about testing: When the functions in testing/ have been
+;; defined, one can test a function in this file interactively by using
+;; `org-test-current-defun' while point is in the function
+
 (defun org-arctc-split-escaped-olpath (olp)
   "return a list of the outline path components by splitting the
 OLP string at \"/\". Do not split at escaped slashes."
@@ -40,6 +45,7 @@ headings are inserted at the end of the buffer.  Returns a marker
 to the beginning of the heading or nil if the path does not
 exist and CREATE is nil."
   (let (tmpolp marker)
+    (cl-assert (eq major-mode 'org-mode) nil "Not in Org mode")
     (cl-dolist (elm olp marker)
       (setq tmpolp (concatenate 'list tmpolp `(,elm)))
       (unless (condition-case err
@@ -67,36 +73,37 @@ exist and CREATE is nil."
 (defun org-arctc-refile-archive-to-olpath (pom)
   "refile the entry at POM to the outline path stored in the ARCHIVE_OLPATH
 property. Can deal with escaped slash in the olpath string."
+  (goto-char pom)
   (let ((olpath (org-entry-get pom "ARCHIVE_OLPATH"))
 	(heading (nth 4 (org-heading-components))))
-    (if olpath
-	(let* ((arc-parentolp (org-arctc-split-escaped-olpath olpath))
-	       (cur-parentolp (org-get-outline-path))
-	       (arc-olp (concatenate 'list arc-parentolp `(,heading))))
-	  (cond
-	   ((equal cur-parentolp arc-parentolp)
-	    (message "item already at olpath"))
-	   ((save-excursion (org-arctc-ensure-heading-exists arc-olp))
-	    (error "target item already exists: aborting"))
-	   (t (progn (message "moving item from %s to %s"
-			      (pp-to-string cur-parentolp)
-			      (pp-to-string arc-parentolp))
-		     ;; the approach with using org-refile did not
-		     ;; work out well. RFLOC argument is difficult to
-		     ;; construct.
-		     ;; (org-refile nil nil
-		     ;; 	       `(nil ,(buffer-file-name) nil 
-		     ;; 		     ,(marker-position 
-		     ;; 		       (save-excursion
-		     ;; 			 (org-arctc-ensure-heading-exists
-		     ;; 			  arc-parentolp t)))) )
-		     (goto-char pom)
-		     (org-cut-subtree)
-		     (goto-char (org-arctc-ensure-heading-exists arc-parentolp t))
-		     (goto-char (org-entry-end-position))
-		     (org-paste-subtree (length arc-olp))
-		     (org-arctc-ensure-heading-exists arc-olp)))))
-      (error "no property ARCHIVE_OLPATH in this entry"))))
+    (assert olpath nil "no property ARCHIVE_OLPATH in this entry")
+    (let* ((arc-parentolp (org-arctc-split-escaped-olpath olpath))
+	   (cur-parentolp (org-get-outline-path))
+	   (arc-olp (concatenate 'list arc-parentolp `(,heading))))
+      (cond
+       ((equal cur-parentolp arc-parentolp)
+	(message "item already at olpath"))
+       ((save-excursion (org-arctc-ensure-heading-exists arc-olp))
+	(error "target item already exists: aborting"))
+       (t (progn (message "moving item from %s to %s"
+			  (pp-to-string cur-parentolp)
+			  (pp-to-string arc-parentolp))
+		 ;; the approach with using org-refile did not
+		 ;; work out well. RFLOC argument is difficult to
+		 ;; construct.
+		 ;; (org-refile nil nil
+		 ;; 	       `(nil ,(buffer-file-name) nil 
+		 ;; 		     ,(marker-position 
+		 ;; 		       (save-excursion
+		 ;; 			 (org-arctc-ensure-heading-exists
+		 ;; 			  arc-parentolp t)))) )
+		 (goto-char pom)
+		 (org-cut-subtree)
+		 (goto-char (org-arctc-ensure-heading-exists arc-parentolp t))
+		 (goto-char (org-entry-end-position))
+		 (org-paste-subtree (length arc-olp))
+		 (org-arctc-ensure-heading-exists arc-olp)))))
+    ))
 
 ;; from http://orgmode.org/worg/org-hacks.html#sec-1-6-1
 ;; archive subtrees conserving the top level heading and
@@ -114,32 +121,33 @@ property. Can deal with escaped slash in the olpath string."
 ;; I added escaping of slashes in the olpath
 ;; added check preventing archiving of a subtree where the full olpath
 ;; already exists
-(defadvice org-archive-subtree (around org-arctc-archive-subtree-low-level
-				       activate)
+(defun org-arctc-archive-subtree-around (orig-fun &rest args)
   (let ((tags (org-arctc-inherited-no-file-tags))
-        (org-archive-location
-         (if (save-excursion (org-back-to-heading)
-                             (> (org-outline-level) 1))
-             (concat (car (split-string org-archive-location "::"))
-                     "::* "
-                     (car (org-get-outline-path)))
-           org-archive-location))
+	(org-archive-location
+	 (if (save-excursion (org-back-to-heading)
+			     (> (org-outline-level) 1))
+	     (concat (car (split-string org-archive-location "::"))
+		     "::* "
+		     (car (org-get-outline-path)))
+	   org-archive-location))
 	(my-olpath (org-get-outline-path))
 	(heading (nth 4 (org-heading-components))))
     (with-current-buffer (find-file-noselect (org-extract-archive-file))
+      (org-mode)
       (when (org-arctc-ensure-heading-exists
 	     (append my-olpath (list heading)) )
 	(error "Heading already exists in archive")))
-    ad-do-it
+    (apply orig-fun args)
     ;; the following code builds on the point being on the inserted
     ;; item when the archive file is opened
     (with-current-buffer (find-file-noselect (org-extract-archive-file))
       (let ((pom (point-marker)))
-	(org-entry-put pom "ARCHIVE_OLPATH" (mapconcat
-					     (lambda (s)
-					       (setq s (replace-regexp-in-string "/" "\\\\/" s))
-					       s)
-					     my-olpath "/"))
+	(org-entry-put pom "ARCHIVE_OLPATH"
+		       (mapconcat
+			(lambda (s)
+			  (setq s (replace-regexp-in-string "/" "\\\\/" s))
+			  s)
+			my-olpath "/"))
 	(org-arctc-refile-archive-to-olpath pom))
       (let ((pom (point-marker)))
 	;; this saves inherited headings
@@ -147,6 +155,7 @@ property. Can deal with escaped slash in the olpath string."
 	  (while (org-up-heading-safe))
 	  (org-set-tags-to tags))
 	(goto-char pom)))))
+(advice-add 'org-archive-subtree :around #'org-arctc-archive-subtree-around)
 
 (defun org-arctc-logbook-splitter (date)
   "move all the clock lines of the current org heading older than
