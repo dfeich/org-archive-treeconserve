@@ -63,7 +63,7 @@ or nil if the path does not exist and CREATE is nil."
 	    (if marker (progn (goto-char marker)
 			      ;; important to reveal before inserting!
 			      (org-reveal)
-			      (org-insert-heading-after-current)
+	 		      (org-insert-heading-after-current)
 			      (org-demote-subtree))
 	      (end-of-buffer)
 	      (org-insert-heading nil nil t)
@@ -220,7 +220,7 @@ archive."
 		       (when (< (org-float-time (date-to-time tmpend))
 				datesec)
 			 (cl-return t)))))
-	(progn (org-cycle '(64))
+	(progn (outline-show-all)
 	       (beginning-of-line)
 	       (setq rstart (point))
 	       (while (re-search-forward clockrange-rgx entryend t))

@@ -140,7 +140,7 @@
 * H3
 "
      (goto-char (org-find-exact-headline-in-buffer "H2.1"))
-     (org-cycle '(64))
+     (outline-show-all)
      (org-arctc-logbook-splitter "2016-09-01" 4)
      (and
       ;; test in source file
