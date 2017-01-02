@@ -23,7 +23,7 @@
    (org-test-with-temp-text "* H1\n** H1.1\n* H2\n"
      (org-arctc-assert-heading-exists '("Hunknown"))))
   (should
-   ;; test creation of the heading
+   ;; test creation of a first level heading
    (org-test-with-temp-text "* H1\n** H1.1\n* H2\n"
      (org-arctc-assert-heading-exists '("H3") t)
      (org-arctc-assert-heading-exists '("H3"))))
@@ -32,6 +32,12 @@
    (org-test-with-temp-text "* H1\n** H1.1\n* H2\n"
      (org-arctc-assert-heading-exists '("H3" "H3.1") t)
      (org-arctc-assert-heading-exists '("H3" "H3.1"))))
+  (should
+   ;; test creation of a 3rd level heading
+   (org-test-with-temp-text "* H1\n** H1.1\n* H2\n"
+     (org-cycle '(4))
+     (org-arctc-assert-heading-exists '("H1" "H1.2" "H1.2.1") t)
+     (org-arctc-assert-heading-exists '("H1" "H1.2" "H1.2.1"))))
   )
 
 (ert-deftest org-arctc-refile-archive-to-olpath ()

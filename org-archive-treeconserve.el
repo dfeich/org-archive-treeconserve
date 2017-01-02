@@ -59,13 +59,16 @@ or nil if the path does not exist and CREATE is nil."
 			       nil
 			     (error errmsg)))))
 	  (unless create (cl-return))
-	  (if marker (progn (goto-char marker)
-			    (org-insert-heading-after-current)
-			    (org-demote-subtree))
-	    (end-of-buffer)
-	    (org-insert-heading nil nil t)
-	    )
-	  (insert elm)
+	  (org-save-outline-visibility t
+	    (if marker (progn (goto-char marker)
+			      ;; important to reveal before inserting!
+			      (org-reveal)
+			      (org-insert-heading-after-current)
+			      (org-demote-subtree))
+	      (end-of-buffer)
+	      (org-insert-heading nil nil t)
+	      )
+	    (insert elm))
 	  (beginning-of-line)	  
 	  (setq marker (point-marker))
 	  (end-of-line)
@@ -200,16 +203,17 @@ archive."
 	(setq datesec (org-float-time
 		       (apply 'encode-time (org-parse-time-string date))))
       (error (error "could not parse date: %s" date)))
-    (save-excursion
-      ;; while usually exits with nil. We exit with t if the clock line
-      ;; we read is older than the given date.
+    (unless
+	(save-excursion
+	  ;; while usually exits with nil. We exit with t if the clock line
+	  ;; we read is older than the given date.
 
-      ;;(find-file-other-window (org-extract-archive-file))
-      (find-file (org-extract-archive-file))
-      (org-mode)
-      (when prfx (org-arctc-assert-heading-exists olp t))
-      (unless (org-arctc-assert-heading-exists olp)
-	(error "The target heading does not exist (%s)" olp)))
+	  ;;(find-file-other-window (org-extract-archive-file))
+	  (find-file (org-extract-archive-file))
+	  (org-mode)
+	  (when prfx (org-arctc-assert-heading-exists olp t))
+	  (org-arctc-assert-heading-exists olp))
+      (error "The target heading does not exist (%s)" olp))
     (if
 	(block nil (while (re-search-forward clockrange-rgx entryend t)
 		     (let ((tmpend (match-string-no-properties 2)))
