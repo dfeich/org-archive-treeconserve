@@ -240,8 +240,8 @@ otherwise place the point at the beginning of the inserted text."
   "Run body in a temporary directory and file buffer with Org mode as the active mode."
   (declare (indent 1))
   (let ((results (gensym)))
-    `(let* ((tmpdir (make-temp-file "org-test-dir" t))
-	    (file (concat tmpdir "/org-test.org"))
+    `(let* ((tmpdir (make-temp-file "org-ert-test-dir" t))
+	    (file (concat tmpdir "/org-ert-test.org"))
 	    (kill-buffer-query-functions nil)
 	    (inside-text (if (stringp ,text) ,text (eval ,text)))
 	    ,results)

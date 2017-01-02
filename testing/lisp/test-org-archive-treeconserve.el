@@ -118,5 +118,45 @@
      )
 
    ))
+
+
+(ert-deftest org-arctc-logbook-splitter ()
+  (should
+   (org-test-with-temp-text-in-dir "# Testfile
+* H1
+* H2
+** H2.1
+   :LOGBOOK:
+   CLOCK: [2016-09-25 Sun 19:00]--[2016-09-25 Sun 19:20] =>  0:20
+   CLOCK: [2016-08-25 Thu 19:00]--[2016-08-25 Thu 19:20] =>  0:20
+   CLOCK: [2016-07-25 Mon 19:00]--[2016-07-25 Mon 19:20] =>  0:20
+   :END:
+* H3
+"
+     (goto-char (org-find-exact-headline-in-buffer "H2.1"))
+     (org-cycle '(64))
+     (org-arctc-logbook-splitter "2016-09-01" 4)
+     (and
+      ;; test in source file
+      (goto-char (org-find-exact-headline-in-buffer "H2.1"))
+      (search-forward ":LOGBOOK:
+   CLOCK: [2016-09-25 Sun 19:00]--[2016-09-25 Sun 19:20] =>  0:20
+   :END:
+* H3")
+      (progn
+	;; test in archive file
+	(find-file (org-extract-archive-file))
+	(org-mode)
+	(goto-char (org-find-exact-headline-in-buffer "H2.1"))
+	;;(org-narrow-to-subtree)
+	(search-forward-regexp
+	 (concat  ":LOGBOOK:[\s-]*\n"
+		  "[\s-]*CLOCK: \\[2016-08-25 Thu 19:00\\]--\\[2016-08-25 Thu 19:20\\] =>  0:20\n"
+		  "[\s-]*CLOCK: \\[2016-07-25 Mon 19:00\\]--\\[2016-07-25 Mon 19:20\\] =>  0:20\n"
+		  "[\s-]*:END:\n"
+		  )
+	 nil t))))
+   ))
+
 ;;; test-org-archive-treeconserve.el ends here
 

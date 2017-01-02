@@ -169,12 +169,20 @@ non-nil it will create the parent headline in case it does not exist."
 	(goto-char pom)))))
 (advice-add 'org-archive-subtree :around #'org-arctc-archive-subtree-around)
 
-(defun org-arctc-logbook-splitter (date)
-  "move all the clock lines of the current org heading older than
+(defun org-arctc-logbook-splitter (date prfx)
+  "Split off an entrie's older clock records to archive.
+
+Move all the clock lines of the current org heading older than
 DATE to the same existing heading in the archive location. This
 is used mainly for permanent tasks which tend to accumulate an
-extreme amount of clock lines."
-  (interactive "sthreshold date: ")
+extreme amount of clock lines.
+
+Without a PREFIX argument the function will issue an error if the
+archive does not already contain an identical headline. If a
+PREFIX argument is given, the headline will be created in the
+archive."
+  (interactive (list (read-string  "sthreshold date: ")
+		     current-prefix-arg))
   (org-back-to-heading)
   ;;(org-clock-find-position nil)
   (let* ((tstamp-inact-rgx
@@ -195,7 +203,11 @@ extreme amount of clock lines."
     (save-excursion
       ;; while usually exits with nil. We exit with t if the clock line
       ;; we read is older than the given date.
-      (find-file-other-window (org-extract-archive-file))
+
+      ;;(find-file-other-window (org-extract-archive-file))
+      (find-file (org-extract-archive-file))
+      (org-mode)
+      (when prfx (org-arctc-assert-heading-exists olp t))
       (unless (org-arctc-assert-heading-exists olp)
 	(error "The target heading does not exist (%s)" olp)))
     (if
@@ -204,7 +216,8 @@ extreme amount of clock lines."
 		       (when (< (org-float-time (date-to-time tmpend))
 				datesec)
 			 (cl-return t)))))
-	(progn (beginning-of-line)
+	(progn (org-cycle '(64))
+	       (beginning-of-line)
 	       (setq rstart (point))
 	       (while (re-search-forward clockrange-rgx entryend t))
 	       (next-line)
@@ -212,6 +225,7 @@ extreme amount of clock lines."
 	       (kill-region rstart (point))
 	       (with-current-buffer (find-file-noselect (org-extract-archive-file))
 		 ;; insert region at the location for clock lines of this entry
+		 (goto-char (org-arctc-assert-heading-exists olp))
 		 (org-clock-find-position nil)
 		 (yank))
 	       )
