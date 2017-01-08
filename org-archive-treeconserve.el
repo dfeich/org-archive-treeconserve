@@ -8,11 +8,7 @@
 ;; URL:
 ;; Version: 0.8
 
-;;; Commentary
-
-;;; Code:
-;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-;;; ** ARCHIVING
+;;; Commentary:
 ;; These functions were written to enable me archiving subtrees
 ;; keeping the same outline path that they had in the source
 ;; agenda source files
@@ -25,14 +21,21 @@
 ;; defined, one can test a function in this file interactively by using
 ;; `org-test-current-defun' while point is in the function
 
+;;; Code:
+(require 'org-archive)
+(require 'org-clock)
+
+
 (defun org-arctc-split-escaped-olpath (olp)
-  "return a list of the outline path components by splitting the
+  "Split an OLP string into components.
+
+Return a list of the outline path components by splitting the
 OLP string at \"/\". Do not split at escaped slashes."
   ;; first replace unescaped slashes by newlines, then replace the
   ;; escaped slashes by normal slashes. Then split on newlines.
   (org-split-string
    (replace-regexp-in-string
-    "\\\\/" "/" 
+    "\\\\/" "/"
     (replace-regexp-in-string "[^\\]\\(/\\)" "\n" olp nil nil 1))
    "\n")
   )
@@ -40,10 +43,10 @@ OLP string at \"/\". Do not split at escaped slashes."
 (defun org-arctc-assert-heading-exists (olp &optional create)
   "Ensure that outline path OLP exists.
 
-OLP is given as a list of heading strings. If CREATE is non-nil,
-the heading will be created. All intermediate levels will be
-created as well. New first level headings are inserted at the end
-of the buffer. Returns a marker to the beginning of the heading
+OLP is given as a list of heading strings.  If CREATE is non-nil,
+the heading will be created.  All intermediate levels will be
+created as well.  New first level headings are inserted at the end
+of the buffer.  Returns a marker to the beginning of the heading
 or nil if the path does not exist and CREATE is nil."
   (let (tmpolp marker)
     (cl-assert (eq major-mode 'org-mode) nil "Not in Org mode")
@@ -65,11 +68,11 @@ or nil if the path does not exist and CREATE is nil."
 			      (org-reveal)
 	 		      (org-insert-heading-after-current)
 			      (org-demote-subtree))
-	      (end-of-buffer)
+	      (goto-char (point-max))
 	      (org-insert-heading nil nil t)
 	      )
 	    (insert elm))
-	  (beginning-of-line)	  
+	  (beginning-of-line)
 	  (setq marker (point-marker))
 	  (end-of-line)
 	  (insert "\n")))))
@@ -78,10 +81,10 @@ or nil if the path does not exist and CREATE is nil."
 ;; the ARCHIVE_OLPATH is problematic, since it separates path elements
 ;; by "/", but a heading string may also contain a "/".
 (defun org-arctc-refile-archive-to-olpath (pom &optional create-parent)
-  "refile the entry at POM to the outline path stored in the ARCHIVE_OLPATH
-property.
+  "Refile the entry at POM to entry's OLP.
 
-Can deal with escaped slash in the olpath string. If create-parent is
+The outline path is found in the ARCHIVE_OLPATH property.
+Can deal with escaped slash in the olpath string.  If CREATE-PARENT is
 non-nil it will create the parent headline in case it does not exist."
   (goto-char pom)
   (let ((olpath (org-entry-get pom "ARCHIVE_OLPATH"))
@@ -93,12 +96,12 @@ non-nil it will create the parent headline in case it does not exist."
       (when create-parent (org-arctc-assert-heading-exists arc-parentolp t))
       (cond
        ((not (org-arctc-assert-heading-exists arc-parentolp))
-	(error "target item's parent entry does not exist: %s" arc-parentolp)
+	(error "Target item's parent entry does not exist: %s" arc-parentolp)
 	)
        ((equal cur-parentolp arc-parentolp)
 	(message "item already at olpath"))
        ((org-arctc-assert-heading-exists arc-olp)
-	(error "target item already exists: aborting"))
+	(error "Target item already exists: aborting"))
        (t (progn (message "moving item from %s to %s"
 			  (pp-to-string cur-parentolp)
 			  (pp-to-string arc-parentolp))
@@ -106,8 +109,8 @@ non-nil it will create the parent headline in case it does not exist."
 		 ;; work out well. RFLOC argument is difficult to
 		 ;; construct.
 		 ;; (org-refile nil nil
-		 ;; 	       `(nil ,(buffer-file-name) nil 
-		 ;; 		     ,(marker-position 
+		 ;; 	       `(nil ,(buffer-file-name) nil
+		 ;; 		     ,(marker-position
 		 ;; 		       (save-excursion
 		 ;; 			 (org-arctc-assert-heading-exists
 		 ;; 			  arc-parentolp t)))) )
@@ -123,7 +126,7 @@ non-nil it will create the parent headline in case it does not exist."
 ;; archive subtrees conserving the top level heading and
 ;; conserving the tags
 (defun org-arctc-inherited-no-file-tags ()
-  "Returns just the tags that are inherited."
+  "Return just the tags that are inherited."
   (let ((alltags (org-entry-get nil "ALLTAGS" 'selective))
         (localtags (org-entry-get nil "TAGS")))
     (mapc (lambda (tag)
@@ -173,16 +176,16 @@ non-nil it will create the parent headline in case it does not exist."
 (advice-add 'org-archive-subtree :around #'org-arctc-archive-subtree-around)
 
 (defun org-arctc-logbook-splitter (date prfx)
-  "Split off an entrie's older clock records to archive.
+  "Split off an entry's older clock records to archive.
 
 Move all the clock lines of the current org heading older than
-DATE to the same existing heading in the archive location. This
+DATE to the same existing heading in the archive location.  This
 is used mainly for permanent tasks which tend to accumulate an
 extreme amount of clock lines.
 
-Without a PREFIX argument the function will issue an error if the
-archive does not already contain an identical headline. If a
-PREFIX argument is given, the headline will be created in the
+Without a prefix PRFX argument the function will issue an error
+if the archive does not already contain an identical headline.  If
+a PREFIX argument is given, the headline will be created in the
 archive."
   (interactive (list (read-string  "sthreshold date: ")
 		     current-prefix-arg))
@@ -190,7 +193,7 @@ archive."
   ;;(org-clock-find-position nil)
   (let* ((tstamp-inact-rgx
 	  (concat "\\[\\([0-9]\\{4\\}-[0-9]\\{2\\}-[0-9]\\{2\\}"
-		  " *\\sw+\.? +[012][0-9]:[0-5][0-9]\\)\\]")) 
+		  " *\\sw+\.? +[012][0-9]:[0-5][0-9]\\)\\]"))
 	 (clockrange-rgx
 	  (concat "^[ \t]*" org-clock-string " "
 		  tstamp-inact-rgx "--" tstamp-inact-rgx
@@ -202,7 +205,7 @@ archive."
     (condition-case err
 	(setq datesec (org-float-time
 		       (apply 'encode-time (org-parse-time-string date))))
-      (error (error "could not parse date: %s" date)))
+      (error (error "Could not parse date: %s" date)))
     (unless
 	(save-excursion
 	  ;; while usually exits with nil. We exit with t if the clock line
@@ -242,5 +245,6 @@ archive."
 ;; creating a sparse tree. But there, the scheduled and deadline times
 ;; are used.
 
+(provide 'org-archive-treeconserve)
 
 ;;; org-archive-treeconserve.el ends here
